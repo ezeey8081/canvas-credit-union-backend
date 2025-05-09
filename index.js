@@ -1,65 +1,66 @@
-const express = require('express');
-const cors = require('cors');
-const { OpenAI } = require('openai');
+// File: /api/chat.js (for Vercel)
 
-// Create Express app
-const app = express();
+// Import necessary libraries
+import { OpenAI } from 'openai';
 
-// Enable CORS for all origins
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type']
-}));
-
-// Parse JSON request body
-app.use(express.json());
-
-// Initialize OpenAI client
+// Initialize OpenAI with your API key from environment variable
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Health check route
-app.get('/', (req, res) => {
-  res.status(200).send('Canvas Credit Union API is running!');
-});
+export default async function handler(req, res) {
+  // Set appropriate CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-// OpenAI proxy route
-app.post('/api/chat', async (req, res) => {
+  // Handle preflight OPTIONS request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // Only allow POST requests for actual processing
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   try {
-    const { messages, temperature = 0.7, max_tokens = 1000 } = req.body;
-    
-    // Validate required fields
+    // Log the incoming request for debugging
+    console.log('Received request:', JSON.stringify(req.body, null, 2));
+
+    // Extract messages from request body
+    const { messages, temperature = 0.7 } = req.body;
+
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'Messages array is required' });
     }
+
+    // Ensure the system message is preserved
+    let messageArray = [...messages];
     
     // Call OpenAI API
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages,
-      temperature,
-      max_tokens
+    console.log('Calling OpenAI with messages:', JSON.stringify(messageArray, null, 2));
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4-turbo", // Or gpt-3.5-turbo for a more affordable option
+      messages: messageArray,
+      temperature: temperature,
+      max_tokens: 1000,
     });
-    
+
+    console.log('OpenAI response:', JSON.stringify(completion, null, 2));
+
     // Return the response
-    res.status(200).json(response);
-    
+    return res.status(200).json(completion);
   } catch (error) {
-    console.error('Error calling OpenAI:', error);
-    res.status(500).json({ 
-      error: 'Error calling OpenAI API', 
-      message: error.message 
+    console.error('Error calling OpenAI API:', error);
+    
+    // Return appropriate error
+    return res.status(500).json({ 
+      error: 'Error processing your request',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
-});
-
-// Start server
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
-
-// Export for Vercel serverless deployment
-module.exports = app;
+}
